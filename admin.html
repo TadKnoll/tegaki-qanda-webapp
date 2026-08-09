@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作問ツール</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <header>
+    <h1>🛠️ 作問ツール</h1>
+    <nav id="tabs" class="tabs"></nav>
+  </header>
+
+  <main>
+    <div id="datastatus" class="data-note"></div>
+
+    <section class="panel" id="settings-panel">
+      <h2>設定（この教科）</h2>
+      <div id="settings" class="settings"></div>
+    </section>
+
+    <section class="panel">
+      <h2>問題一覧 <span class="sub">※出題文・正解の変更は「保存」で反映／削除・追加は即反映</span></h2>
+      <div id="qlist"></div>
+      <div class="toolbar">
+        <button id="check-all" class="btn">全選択</button>
+        <button id="del-checked" class="btn danger">選択した問題を削除</button>
+        <button id="save" class="btn primary">保存</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>一括追加</h2>
+      <textarea id="bulk" rows="6" placeholder="出題文 | 正解"></textarea>
+      <div class="help">1行に「出題文 | 正解」の形式で書くと、まとめて追加できます。例：</div>
+      <div class="help sample">「ガリア戦記」を著した古代ローマの武将 | カエサル</div>
+      <div class="toolbar">
+        <button id="bulk-add" class="btn primary">一括追加</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>書き出し・読み込み</h2>
+      <p class="help">
+        生徒へ反映するには「questions.js を書き出し」→ ダウンロードしたファイルを
+        <code>js/questions.js</code> と置き換えてサーバーに配置します。<br>
+        この端末だけで確認する場合はそのまま出題ページを開いてください（編集データが自動で使われます）。
+      </p>
+      <div class="toolbar">
+        <button id="export-js" class="btn primary">questions.js を書き出し（配布用）</button>
+        <button id="export-json" class="btn">バックアップJSONを書き出し</button>
+        <label class="btn file-btn">JSONを読み込み<input type="file" id="import-json" accept=".json" hidden></label>
+        <button id="reset" class="btn danger">初期問題に戻す</button>
+      </div>
+    </section>
+
+    <p class="foot"><a href="index.html">出題ページを開く</a></p>
+  </main>
+
+  <script src="js/questions.js"></script>
+  <script src="js/questions-store.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

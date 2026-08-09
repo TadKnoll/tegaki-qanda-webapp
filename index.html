@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>手書き 一問一答 チェック</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>✍️ 手書き 一問一答チェック</h1>
+    <nav id="tabs" class="tabs"></nav>
+  </header>
+
+  <main>
+    <div class="qnum" id="qnum">問題 1</div>
+    <div class="question" id="question-text">…</div>
+
+    <div class="cells" id="cells"></div>
+
+    <p class="hint" id="hint">マスは左から順に1字ずつ書きましょう。余ったマスは空のままでOK。</p>
+
+    <p class="data-note" id="data-note" hidden></p>
+
+    <div class="controls">
+      <button id="undo-btn" class="btn">この1字を消す</button>
+      <button id="clear-btn" class="btn">全部消す</button>
+      <button id="grade-btn" class="btn primary">採点する</button>
+    </div>
+
+    <div id="result"></div>
+
+    <div class="nav">
+      <button id="prev-btn" class="btn">◀ 前へ</button>
+      <button id="next-btn" class="btn">次へ ▶</button>
+    </div>
+  </main>
+
+  <script src="vendor/kanji-canvas.min.js"></script>
+  <script src="vendor/ref-patterns.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/questions-store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
