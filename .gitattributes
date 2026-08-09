@@ -1,0 +1,7 @@
+*.wasm binary
+*.onnx binary
+*.pt binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
