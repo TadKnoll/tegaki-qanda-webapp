@@ -16,6 +16,8 @@
   var undoBtn = document.getElementById('undo-btn');
   var clearBtn = document.getElementById('clear-btn');
   var gradeBtn = document.getElementById('grade-btn');
+  var lastResults = null;      // 直近の採点結果（自己判定で更新するため保持）
+  var lastWholeAnswer = false;
 
   function current() {
     return banks[bankId].questions[qIndex];
@@ -132,40 +134,102 @@
     return res.trim().split(/\s+/);
   }
 
+  // ---- 閉集合採点（正解照合モード） ----
+  // マスの正解文字が既知であることを利用し、候補を「正解＋似た字＋開放認識の上位」に
+  // 限定して距離比較する。画数のフィルタ（ゲート）は使わない。
+  var CLOSED_OK_DIST = 36;    // 正解距離の閾値（これ以下なら ○ の候補）
+  var CLOSED_OK_MARGIN = 5;   // 正解と最有力の他候補との距離差
+  var CLOSED_AMB_DIST = 50;   // ここまでなら △（要自己判定）
+  var CLOSED_AMB_MARGIN = 10;
+
+  var refIndex = null;
+  function buildRefIndex() {
+    refIndex = {};
+    for (var k = 0; k < KanjiCanvas.refPatterns.length; k++) {
+      var r = KanjiCanvas.refPatterns[k];
+      (refIndex[r[0]] = refIndex[r[0]] || []).push(r);
+    }
+  }
+
+  function refFineDistance(ref, features) {
+    var map = KanjiCanvas.getMap(ref[2], features, KanjiCanvas.initialDistance);
+    map = KanjiCanvas.completeMap(ref[2], features, KanjiCanvas.wholeWholeDistance, map);
+    var d = KanjiCanvas.computeWholeDistanceWeighted(ref[2], features, map);
+    return d / Math.min(features.length, ref[2].length);
+  }
+
+  function charBestDistance(label, features) {
+    var refs = refIndex[label];
+    if (!refs) return Infinity;
+    var best = Infinity;
+    for (var k = 0; k < refs.length; k++) {
+      var d = refFineDistance(refs[k], features);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  function cellFeatures(i) {
+    var id = cellId(i);
+    var norm = KanjiCanvas.momentNormalize(id);
+    return KanjiCanvas.extractFeatures(norm, 20);
+  }
+
+  function closedSetDecision(i, exp) {
+    if (!refIndex) buildRefIndex();
+    var features = cellFeatures(i);
+    var labels = {};
+    labels[exp] = true;
+    var sims = (window.SIMILAR_CHARS && SIMILAR_CHARS[exp]) || [];
+    for (var s = 0; s < sims.length; s++) labels[sims[s]] = true;
+    var openTop = recognizeCell(i) || [];
+    for (var t = 0; t < openTop.length && t < 3; t++) if (openTop[t]) labels[openTop[t]] = true;
+    var scores = [];
+    for (var l in labels) scores.push({ label: l, dist: charBestDistance(l, features) });
+    scores.sort(function (a, b) { return a.dist - b.dist; });
+    var dC = -1, dO = Infinity, oLabel = '';
+    for (var u = 0; u < scores.length; u++) {
+      if (scores[u].label === exp) dC = scores[u].dist;
+      else if (scores[u].dist < dO) { dO = scores[u].dist; oLabel = scores[u].label; }
+    }
+    var margin = dC - dO;
+    var openAgree = openTop.length > 0 && openTop[0] === exp;
+    var candLabels = scores.slice(0, 3).map(function (x) { return x.label; });
+    if (dC <= CLOSED_OK_DIST && margin <= CLOSED_OK_MARGIN && openAgree) {
+      return { grade: 'ok', shown: exp, cands: candLabels };
+    }
+    if ((dC <= CLOSED_AMB_DIST && margin <= CLOSED_AMB_MARGIN) || openAgree) {
+      return { grade: 'good', shown: oLabel || exp, cands: candLabels };
+    }
+    return { grade: 'ng', shown: oLabel || exp, cands: candLabels };
+  }
+
   function grade() {
     if (isEnglish()) { gradeEnglish(); return; }
     var q = current();
     var wholeAnswer = !!banks[bankId].wholeAnswer;
     var results = [];
-    var correct = 0;
     for (var i = 0; i < cellTotal; i++) {
       var expected = i < q.a.length ? q.a[i] : '';
-      var cands = recognizeCell(i);
-      if (cands === null) {
-        // 空のマス
-        results.push({ grade: expected ? 'ng' : 'blank', shown: expected ? '未記入' : '', answer: expected });
+      var strokes = KanjiCanvas['recordedPattern_' + cellId(i)] || [];
+      if (!expected) {
+        results.push({ grade: strokes.length ? 'ng' : 'blank', shown: '', answer: '', cands: [] });
+      } else if (!strokes.length) {
+        results.push({ grade: 'ng', shown: '未記入', answer: expected, cands: [] });
       } else {
-        var shown = cands[0] || '?';
-        if (!expected) {
-          // 正解文字数を超えて書いた → 過剰
-          results.push({ grade: 'ng', shown: shown, answer: '' });
-        } else if (cands[0] === expected) {
-          results.push({ grade: 'ok', shown: shown, answer: expected });
-          correct++;
-        } else if (cands.indexOf(expected) >= 0 && cands.indexOf(expected) < 5) {
-          results.push({ grade: 'good', shown: shown, answer: expected });
-        } else {
-          results.push({ grade: 'ng', shown: shown, answer: expected });
-        }
+        results.push(closedSetDecision(i, expected));
       }
     }
-    if (wholeAnswer) {
-      // 全マスが ○ か △（×が無い）なら全体を正解とする
-      var ok = results.every(function (r) { return r.grade !== 'ng'; });
-      showResults(results, ok ? q.a.length : 0, wholeAnswer, ok);
-    } else {
-      showResults(results, correct, false, false);
-    }
+    showResults(results, wholeAnswer);
+  }
+
+  function englishWhitelist() {
+    var set = {};
+    var qs = (banks.english && banks.english.questions) || [];
+    qs.forEach(function (q) {
+      String(q.a).toLowerCase().replace(/[a-z]/g, function (c) { set[c] = true; });
+    });
+    return Object.keys(set).sort().join('');
   }
 
   function gradeEnglish() {
@@ -173,7 +237,9 @@
       if (!tesseractWorker) {
         return Tesseract.createWorker('eng', 1).then(function (w) {
           tesseractWorker = w;
-          return runEnglish();
+          return w.setParameters({ tessedit_char_whitelist: englishWhitelist() }).then(function () {
+            return runEnglish();
+          });
         });
       }
       return runEnglish();
@@ -190,50 +256,119 @@
       var norm = text.toLowerCase().replace(/[^a-z]/g, '');
       var ans = q.a.toLowerCase();
       var ok = norm === ans || (ans.length > 1 && norm.indexOf(ans) >= 0);
-      showResults([{ grade: ok ? 'ok' : 'ng', shown: text || '未記入', answer: q.a }], ok ? 1 : 0);
+      showResults([{ grade: ok ? 'ok' : 'ng', shown: text || '未記入', answer: q.a }], true);
     });
   }
 
-  function showResults(results, correct, wholeAnswer, ok) {
-    var q = current();
-    clearMarks();
+  function showResults(results, wholeAnswer) {
+    lastResults = results;
+    lastWholeAnswer = wholeAnswer;
+    renderMarks(results);
+    var s = scoreInfo(results, wholeAnswer);
+    var sEl = document.createElement('div');
+    sEl.className = 'score ' + s.cls;
+    sEl.textContent = s.text;
+    var f = document.createElement('div');
+    f.className = 'feedback';
+    f.textContent = '正解は「' + current().a + '」';
+    resultEl.innerHTML = '';
+    resultEl.appendChild(sEl);
+    resultEl.appendChild(f);
     if (!wholeAnswer) {
-      // マス毎に ○△× を表示
-      for (var i = 0; i < cellTotal; i++) {
-        var box = document.getElementById('cellbox_' + i);
-        if (!box) continue;
-        if (results[i].grade === 'blank') continue; // 余った空マスには何も表示しない
-        var mark = document.createElement('span');
-        mark.className = 'mark ' + results[i].grade;
-        mark.textContent = results[i].grade === 'ok' ? '○' : results[i].grade === 'good' ? '△' : '×';
-        box.appendChild(mark);
+      var l = document.createElement('div');
+      l.className = 'legend';
+      l.textContent = '○=正解　△=自動判定に自信なし（自分で確認）　×=不正解';
+      resultEl.appendChild(l);
+    }
+    var ambIdx = [];
+    for (var i = 0; i < results.length; i++) if (results[i].grade === 'good') ambIdx.push(i);
+    if (ambIdx.length) renderSelfCheck(ambIdx);
+    gradeBtn.disabled = true;
+  }
+
+  function renderMarks(results) {
+    clearMarks();
+    for (var i = 0; i < cellTotal; i++) {
+      var box = document.getElementById('cellbox_' + i);
+      if (!box || !results[i] || results[i].grade === 'blank') continue;
+      var mark = document.createElement('span');
+      mark.className = 'mark ' + results[i].grade;
+      mark.textContent = results[i].grade === 'ok' ? '○' : results[i].grade === 'good' ? '△' : '×';
+      box.appendChild(mark);
+      if (results[i].shown) {
         var shown = document.createElement('span');
         shown.className = 'shown';
         shown.textContent = results[i].shown;
         box.appendChild(shown);
       }
     }
-    var s = document.createElement('div');
-    s.className = 'score';
+  }
+
+  function scoreInfo(results, wholeAnswer) {
     if (wholeAnswer) {
-      s.textContent = ok ? '◯ 正解！' : '× 不正解';
-      s.className = 'score ' + (ok ? 'score-ok' : 'score-ng');
-    } else {
-      s.textContent = correct + ' / ' + q.a.length + ' 文字 正解';
+      var ok = results.every(function (r) { return r.grade !== 'ng'; });
+      return { text: ok ? '◯ 正解！' : '× 不正解', cls: ok ? 'score-ok' : 'score-ng' };
     }
-    var f = document.createElement('div');
-    f.className = 'feedback';
-    f.textContent = '正解は「' + q.a + '」';
-    resultEl.innerHTML = '';
-    resultEl.appendChild(s);
-    resultEl.appendChild(f);
-    if (!wholeAnswer) {
-      var l = document.createElement('div');
-      l.className = 'legend';
-      l.textContent = '○=正解　△=候補のうちに含まれる（要確認）　×=不正解';
-      resultEl.appendChild(l);
+    var correct = 0;
+    for (var i = 0; i < results.length; i++) if (results[i].grade === 'ok') correct++;
+    return { text: correct + ' / ' + current().a.length + ' 文字 正解', cls: '' };
+  }
+
+  function renderSelfCheck(ambIdx) {
+    var panel = document.createElement('div');
+    panel.className = 'selfcheck';
+    panel.id = 'selfcheck';
+    var p = document.createElement('p');
+    p.className = 'sc-title';
+    p.textContent = '以下のマスは自動判定に自信がありません。見比べて ○/× を選んで下さい。';
+    panel.appendChild(p);
+    ambIdx.forEach(function (i) {
+      var row = document.createElement('div');
+      row.className = 'sc-row';
+      row.id = 'sc-' + i;
+      var cellLabel = document.createElement('span');
+      cellLabel.className = 'sc-cell';
+      cellLabel.textContent = 'マス' + (i + 1);
+      var cands = document.createElement('span');
+      cands.className = 'sc-cands';
+      cands.textContent = '（候補: ' + (lastResults[i].cands || []).join('・') + '）';
+      var okBtn = document.createElement('button');
+      okBtn.className = 'btn sc-btn';
+      okBtn.textContent = '○ あってる';
+      okBtn.addEventListener('click', (function (idx) { return function () { resolveSelfCheck(idx, true); }; })(i));
+      var ngBtn = document.createElement('button');
+      ngBtn.className = 'btn sc-btn';
+      ngBtn.textContent = '× まちがい';
+      ngBtn.addEventListener('click', (function (idx) { return function () { resolveSelfCheck(idx, false); }; })(i));
+      row.appendChild(cellLabel);
+      row.appendChild(cands);
+      row.appendChild(okBtn);
+      row.appendChild(ngBtn);
+      panel.appendChild(row);
+    });
+    resultEl.appendChild(panel);
+  }
+
+  function resolveSelfCheck(i, pass) {
+    lastResults[i].grade = pass ? 'ok' : 'ng';
+    var box = document.getElementById('cellbox_' + i);
+    if (box) {
+      var oldMark = box.querySelector('.mark');
+      if (oldMark) oldMark.remove();
+      var oldShown = box.querySelector('.shown');
+      if (oldShown) oldShown.remove();
+      var mark = document.createElement('span');
+      mark.className = 'mark ' + (pass ? 'ok' : 'ng');
+      mark.textContent = pass ? '○' : '×';
+      box.appendChild(mark);
     }
-    gradeBtn.disabled = true;
+    var row = document.getElementById('sc-' + i);
+    if (row) row.remove();
+    var panel = document.getElementById('selfcheck');
+    if (panel && panel.querySelectorAll('.sc-row').length === 0) panel.remove();
+    var s = scoreInfo(lastResults, lastWholeAnswer);
+    var scoreEl = resultEl.querySelector('.score');
+    if (scoreEl) { scoreEl.textContent = s.text; scoreEl.className = 'score ' + s.cls; }
   }
 
   function loadTesseractLib() {
