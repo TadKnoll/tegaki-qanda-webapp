@@ -5,9 +5,11 @@ Chromebook / iPad のブラウザで動作する、手書き入力による一�
 ## 概要
 
 - 出題ページ（`index.html`）と作問ツール（`admin.html`）の 2 ページ構成の完全静的サイト
-- 漢字・歴史：1 文字 = 1 マスの手書き（オンライン文字認識: kanjicanvas アルゴリズム）
+- 漢字・歴史：1 文字 = 1 マスの手書き（ブラウザ内 CNN 推論: onnxruntime-web）
 - 英語：1 語 = 1 枠の画像認識（Tesseract.js OCR、CDN 読み込み・要インターネット）
 - 問題データは端末の `localStorage` に保存（`quiz_banks_v1`）。配布時は `questions.js` を書き出して差し替える方式
+- **注意**: 漢字・歴史の採点は onnxruntime-web が `fetch()` でモデルを読むため `file://` では動作しません。
+  `python -m http.server` 等の HTTP サーバー、または GitHub Pages 経由で開いてください
 
 ## ディレクトリ構成
 
@@ -21,12 +23,19 @@ Chromebook / iPad のブラウザで動作する、手書き入力による一�
 ├── js/
 │   ├── questions.js          # 問題バンク定義（配布データ）
 │   ├── questions-store.js    # localStorage 保存・読み込み・書き出し
-│   ├── similar-chars.js      # 似た字テーブル（閉集合採点の候補。自動生成）
+│   ├── cnn.js                # CNN 推論（前処理移植 + onnxruntime-web）
 │   ├── app.js                # 出題・採点ロジック
 │   └── admin.js              # 作問ツールロジック
+├── training/            # 学習パイプライン（詳細は training/README.md）
 └── vendor/
-    ├── kanji-canvas.min.js   # 手書き認識エンジン（asdfjkl/kanjicanvas, MIT）
-    └── ref-patterns.js       # 参照パターンデータ（6.9MB・増強版）
+    ├── kanji-canvas.min.js   # 手書きキャンバス入力（asdfjkl/kanjicanvas, MIT）
+    ├── ref-patterns.js       # 参照パターンデータ（6.9MB・増強版）
+    └── onnx/                 # onnxruntime-web 1.19.2 自己ホスト + モデル
+        ├── ort.min.js
+        ├── ort-wasm-simd-threaded.wasm / .mjs
+        ├── ort-wasm-simd-threaded.jsep.wasm / .mjs
+        ├── kanji_cnn.onnx    # 学習済み CNN（31MB, 2357 クラス）
+        └── labels.js         # クラス順の文字リスト
 ```
 
 ## 出題ページの仕様
@@ -38,18 +47,21 @@ Chromebook / iPad のブラウザで動作する、手書き入力による一�
 - 採点方式
   - 歴史：**全体採点**（`wholeAnswer: true`）— 全マスが ○ か △ なら「◯ 正解！」
   - 漢字：文字ごとの ○△×
-    - ○ = 正解（閉集合照合で正解文字が最有力 & 距離が閾値内 & 開放認識も一致）
+    - ○ = 正解（CNN が正解を top1 で判定 & 確率 0.50 以上）
     - △ = 自動判定に自信がない文字（「候補」を表示し、生徒が ○/× を選んで自己採点）
     - × = 不正解
   - 英語：OCR 結果を英字正規化して照合（認識語彙を解答で使う文字に限定する `tessedit_char_whitelist` を使用）
 - ナビゲーションで前後の問題へ移動（循環）
 
-### 閉集合採点（正解照合モード）
+### CNN 採点（正解照合モード）
 
-- 歴史・漢字はマスの**正解文字が既知**であることを利用し、候補を「正解 + 似た字 + 開放認識の上位」に限定して距離比較する（`js/app.js`）
-- 似た字のテーブルは参照パターン同士の DTW 距離から自動生成（`js/similar-chars.js`、164 文字分）
-- 採点パラメータは実際の認識エンジンを Node ヘッドレスで実行してキャリブレーション済み（`CLOSED_OK_DIST=36`, `CLOSED_OK_MARGIN=5`, `CLOSED_AMB_DIST=50`, `CLOSED_AMB_MARGIN=10`）
-- 検証ハーネス: `C:\Users\koyama\AppData\Local\Temp\opencode\harness.js` / `closedset.js` / `smoke.js`（DOM モックで採点フローを 17 ケース自動検証）
+- 歴史・漢字はマスの**正解文字が既知**であることを利用し、CNN の softmax 確率で ○/△/× を判定する（`js/app.js`・`js/cnn.js`）
+- 判定ルール
+  - ○: top1 == 正解 かつ 確率 >= 0.50
+  - △: 正解が top5 候補内、または正解確率 >= 0.25（自信が無い → 自己判定）
+  - ×: 上記以外。モデルに含まれない文字は自動判定せず △ に回す
+- モデルは `training/` で合成データ（フォント由来ベクトル + 手書き風拡張）から学習した
+  2357 クラス CNN（val_top1=99.97%）。詳細は `training/README.md` 参照
 
 ## 作問ツールの仕様
 
@@ -111,10 +123,13 @@ Chromebook / iPad のブラウザで動作する、手書き入力による一�
 |---|---|
 | `9817966` | 初回コミット: 手書き一問一答 WebApp |
 | `fe1b276` | カタカナ認識精度を向上: 参照パターンを各文字 4 サンプルに増強 |
-| （未コミット） | 閉集合採点 + 自己採点（△）モード + 英語 whitelist を実装 |
+| `2c9e42d` | 閉集合採点 + 自己採点（△）モード + 英語 whitelist を実装 |
+| `5dd9e7d` | CNN 手書き認識の学習パイプラインを追加（チェックポイント・ONNX含む） |
+| （未コミット） | 学習 14 エポック完了 + ブラウザ統合（onnxruntime-web 自己ホスト・`js/cnn.js`・採点を CNN に切替） |
 
 ## メモ・既知の点
 
 - 作問ツールの編集データは端末ごとの `localStorage`。iPad で作問した内容はその iPad 専用で、配布時は「questions.js を書き出し」で共有
-- 英語 OCR は Tesseract.js を CDN から読み込むため、オフラインでは動作しない（漢字・歴史はオフラインでも動作）
-- 認識ライブラリに元来のデバッグ用 `console.log` が残っている（特定文字の認識時のみ出力。動作には影響なし）
+- 英語 OCR は Tesseract.js を CDN から読み込むため、オフラインでは動作しない
+- 漢字・歴史の採点は onnxruntime-web が `fetch()` でモデル/ wasm を読み込むため、`file://` では動作しない
+  （`python -m http.server` 等の HTTP サーバー、または GitHub Pages 経由で開く）

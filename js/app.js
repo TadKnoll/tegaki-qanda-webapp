@@ -125,102 +125,67 @@
     resetGradedState();
   }
 
-  // 1文字認識。strokeが無ければ null
-  function recognizeCell(i) {
-    var strokes = KanjiCanvas['recordedPattern_' + cellId(i)] || [];
-    if (strokes.length === 0) return null;
-    var res = '';
-    try { res = KanjiCanvas.recognize(cellId(i)) || ''; } catch (e) { res = ''; }
-    return res.trim().split(/\s+/);
+  // ---- CNN 採点（onnxruntime-web） ----
+  // 正解既知の閉集合を利用し、CNN softmax 確率で ○/△/× を判定する。
+  // 実手書きと合成学習データの乖離に備え、自信が無い場合は △（自己判定）に回す。
+  var CNN_OK_P = 0.5;     // top1==正解 かつ この確率以上なら ○
+  var CNN_AMB_P = 0.25;   // 正解がこの確率以上なら △（top1が正解でなくても候補扱い）
+
+  function cnnAvailable() {
+    return window.CNN && CNN.available;
   }
 
-  // ---- 閉集合採点（正解照合モード） ----
-  // マスの正解文字が既知であることを利用し、候補を「正解＋似た字＋開放認識の上位」に
-  // 限定して距離比較する。画数のフィルタ（ゲート）は使わない。
-  var CLOSED_OK_DIST = 36;    // 正解距離の閾値（これ以下なら ○ の候補）
-  var CLOSED_OK_MARGIN = 5;   // 正解と最有力の他候補との距離差
-  var CLOSED_AMB_DIST = 50;   // ここまでなら △（要自己判定）
-  var CLOSED_AMB_MARGIN = 10;
-
-  var refIndex = null;
-  function buildRefIndex() {
-    refIndex = {};
-    for (var k = 0; k < KanjiCanvas.refPatterns.length; k++) {
-      var r = KanjiCanvas.refPatterns[k];
-      (refIndex[r[0]] = refIndex[r[0]] || []).push(r);
+  function gradeCellCNN(cell) {
+    var expected = cell.expected;
+    var strokes = cell.strokes;
+    if (!expected) {
+      return Promise.resolve({ grade: strokes.length ? 'ng' : 'blank', shown: '', answer: '', cands: [] });
     }
-  }
-
-  function refFineDistance(ref, features) {
-    var map = KanjiCanvas.getMap(ref[2], features, KanjiCanvas.initialDistance);
-    map = KanjiCanvas.completeMap(ref[2], features, KanjiCanvas.wholeWholeDistance, map);
-    var d = KanjiCanvas.computeWholeDistanceWeighted(ref[2], features, map);
-    return d / Math.min(features.length, ref[2].length);
-  }
-
-  function charBestDistance(label, features) {
-    var refs = refIndex[label];
-    if (!refs) return Infinity;
-    var best = Infinity;
-    for (var k = 0; k < refs.length; k++) {
-      var d = refFineDistance(refs[k], features);
-      if (d < best) best = d;
+    if (!strokes.length) {
+      return Promise.resolve({ grade: 'ng', shown: '未記入', answer: expected, cands: [] });
     }
-    return best;
-  }
-
-  function cellFeatures(i) {
-    var id = cellId(i);
-    var norm = KanjiCanvas.momentNormalize(id);
-    return KanjiCanvas.extractFeatures(norm, 20);
-  }
-
-  function closedSetDecision(i, exp) {
-    if (!refIndex) buildRefIndex();
-    var features = cellFeatures(i);
-    var labels = {};
-    labels[exp] = true;
-    var sims = (window.SIMILAR_CHARS && SIMILAR_CHARS[exp]) || [];
-    for (var s = 0; s < sims.length; s++) labels[sims[s]] = true;
-    var openTop = recognizeCell(i) || [];
-    for (var t = 0; t < openTop.length && t < 3; t++) if (openTop[t]) labels[openTop[t]] = true;
-    var scores = [];
-    for (var l in labels) scores.push({ label: l, dist: charBestDistance(l, features) });
-    scores.sort(function (a, b) { return a.dist - b.dist; });
-    var dC = -1, dO = Infinity, oLabel = '';
-    for (var u = 0; u < scores.length; u++) {
-      if (scores[u].label === exp) dC = scores[u].dist;
-      else if (scores[u].dist < dO) { dO = scores[u].dist; oLabel = scores[u].label; }
-    }
-    var margin = dC - dO;
-    var openAgree = openTop.length > 0 && openTop[0] === exp;
-    var candLabels = scores.slice(0, 3).map(function (x) { return x.label; });
-    if (dC <= CLOSED_OK_DIST && margin <= CLOSED_OK_MARGIN && openAgree) {
-      return { grade: 'ok', shown: exp, cands: candLabels };
-    }
-    if ((dC <= CLOSED_AMB_DIST && margin <= CLOSED_AMB_MARGIN) || openAgree) {
-      return { grade: 'good', shown: oLabel || exp, cands: candLabels };
-    }
-    return { grade: 'ng', shown: oLabel || exp, cands: candLabels };
+    return CNN.recognize(strokes, 5).then(function (res) {
+      var cands = res.top.map(function (t) { return t.label; });
+      var ei = CNN.indexOf(expected);
+      var pExp = ei >= 0 ? (res.probs[ei] || 0) : -1;
+      var top1 = res.top[0];
+      var shown = top1 ? top1.label : '';
+      if (ei < 0) {
+        // モデルに含まれない文字は自動判定せず自己判定に回す
+        return { grade: 'good', shown: shown, answer: expected, cands: cands };
+      }
+      if (top1 && top1.label === expected) {
+        return { grade: top1.prob >= CNN_OK_P ? 'ok' : 'good', shown: shown, answer: expected, cands: cands };
+      }
+      if (cands.indexOf(expected) >= 0 || pExp >= CNN_AMB_P) {
+        return { grade: 'good', shown: shown, answer: expected, cands: cands };
+      }
+      return { grade: 'ng', shown: shown, answer: expected, cands: cands };
+    });
   }
 
   function grade() {
     if (isEnglish()) { gradeEnglish(); return; }
     var q = current();
     var wholeAnswer = !!banks[bankId].wholeAnswer;
-    var results = [];
+    if (!cnnAvailable()) {
+      resultEl.innerHTML = '<div class="feedback">CNN認識（onnxruntime-web）を読み込めませんでした。httpサーバー経由で開いてください。</div>';
+      return;
+    }
+    gradeBtn.disabled = true;
+    resultEl.innerHTML = '<div class="feedback">認識中…</div>';
+    var tasks = [];
     for (var i = 0; i < cellTotal; i++) {
       var expected = i < q.a.length ? q.a[i] : '';
       var strokes = KanjiCanvas['recordedPattern_' + cellId(i)] || [];
-      if (!expected) {
-        results.push({ grade: strokes.length ? 'ng' : 'blank', shown: '', answer: '', cands: [] });
-      } else if (!strokes.length) {
-        results.push({ grade: 'ng', shown: '未記入', answer: expected, cands: [] });
-      } else {
-        results.push(closedSetDecision(i, expected));
-      }
+      tasks.push(gradeCellCNN({ expected: expected, strokes: strokes }));
     }
-    showResults(results, wholeAnswer);
+    Promise.all(tasks).then(function (results) {
+      showResults(results, wholeAnswer);
+    }).catch(function (err) {
+      resultEl.innerHTML = '<div class="feedback">認識に失敗しました: ' + (err && err.message ? err.message : err) + '</div>';
+      gradeBtn.disabled = false;
+    });
   }
 
   function englishWhitelist() {
@@ -396,6 +361,11 @@
 
   setupTabs();
   loadQuestion();
+
+  // CNN モデルを事前読み込み（初回採点を速くする）
+  if (cnnAvailable()) {
+    setTimeout(function () { CNN.init().catch(function () {}); }, 300);
+  }
 
   // 作問ツールの編集データを使用中なら案内を出す
   var note = document.getElementById('data-note');
