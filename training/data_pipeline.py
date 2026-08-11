@@ -92,25 +92,28 @@ def rasterize(coords, width=3, size=SIZE):
 
 
 def augment(coords, rng, stroke_widths=(1, 2, 3, 4, 5),
-            rot=10.0, shear=0.15, jitter_sigma=0.9,
-            merge_p=0.15, reorder_p=0.15):
+            rot=20.0, shear=0.25, jitter_sigma=1.2,
+            aspect=(0.85, 1.18), merge_p=0.2, reorder_p=0.15):
     """Apply handwriting-style augmentation to normalized coords."""
     c = [list(map(list, st)) for st in coords]
 
-    # affine: rotate + shear around center of the drawing box
+    # affine: rotate + shear + aspect(縦横比) distortion around the drawing center
     if len(c):
         flat = [p for st in c for p in st]
         cx = sum(p[0] for p in flat) / len(flat)
         cy = sum(p[1] for p in flat) / len(flat)
         th = math.radians(rng.uniform(-rot, rot))
         sh = rng.uniform(-shear, shear)
+        ax = rng.uniform(*aspect)
+        ay = rng.uniform(*aspect)
         cth, sth = math.cos(th), math.sin(th)
         def apply(p):
             dx, dy = p[0] - cx, p[1] - cy
-            # shear then rotate
-            dx2 = dx + sh * dy
-            x = cx + cth * dx2 - sth * dy
-            y = cy + sth * dx2 + cth * dy
+            # aspect, then shear, then rotate
+            dx2 = dx * ax + sh * dy
+            dy2 = dy * ay
+            x = cx + cth * dx2 - sth * dy2
+            y = cy + sth * dx2 + cth * dy2
             return (x, y)
         c = [[apply(p) for p in st] for st in c]
 

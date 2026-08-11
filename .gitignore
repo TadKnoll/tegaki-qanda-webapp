@@ -10,3 +10,6 @@ desktop.ini
 # Node / build (unused for now)
 node_modules/
 dist/
+
+# Training backups (rollback copies of old models)
+training/out_pre_aug_backup/

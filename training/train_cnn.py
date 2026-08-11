@@ -13,6 +13,10 @@ import torch.nn as nn
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data_pipeline import load_refs, normalize_coords, rasterize, augment
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'out')
 os.makedirs(OUTDIR, exist_ok=True)
 CKPT = os.path.join(OUTDIR, 'ckpt.pt')
