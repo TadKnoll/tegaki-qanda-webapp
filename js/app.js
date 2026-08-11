@@ -331,7 +331,7 @@
     if (ambIdx.length) renderSelfCheck(ambIdx);
     gradeBtn.disabled = true;
 
-    // 実手書きの再学習用: ◯判定のマスがあれば保存ボタンを出す（英語は対象外）
+    // 実手書きの再学習用（英語は対象外）
     if (!isEnglish()) {
       var okN = 0;
       for (var ci = 0; ci < results.length; ci++) {
@@ -354,6 +354,31 @@
         cw.appendChild(cb);
         cw.appendChild(cmsg);
         resultEl.appendChild(cw);
+      }
+      // △・×でも「正しく書けた」場合に保存できるよう、マス単位の保存ボタンを出す
+      for (var mci = 0; mci < results.length; mci++) {
+        var mg = results[mci] ? results[mci].grade : '';
+        if (mg !== 'good' && mg !== 'ng') continue;
+        var mch = mci < current().a.length ? current().a[mci] : '';
+        if (!mch || mch.length !== 1 || !validStrokes(cellStrokes(mci))) continue;
+        (function (idx, chr) {
+          var mbox = document.createElement('div');
+          mbox.className = 'collect-actions';
+          var mb = document.createElement('button');
+          mb.className = 'btn';
+          mb.textContent = 'マス' + (idx + 1) + '「' + chr + '」は正しく書けた → 学習用に保存';
+          var mmsg = document.createElement('span');
+          mmsg.className = 'collect-msg';
+          mb.addEventListener('click', function () {
+            var added = addSample(chr, cellStrokes(idx));
+            mmsg.textContent = added ? '保存しました。画面下の「ダウンロード」で取り出せます。' : 'この手書きは保存済みです。';
+            mb.disabled = true;
+            refreshCollectBar();
+          });
+          mbox.appendChild(mb);
+          mbox.appendChild(mmsg);
+          resultEl.appendChild(mbox);
+        })(mci, mch);
       }
     }
   }

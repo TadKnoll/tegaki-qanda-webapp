@@ -89,9 +89,9 @@ $env:REALDATA='C:\path\to\kanji_training_data_XXXX.json'; $env:RESUME='1'; $env:
    アプリの採点フローを Chrome ヘッドレスで E2E 検証（正解→○、誤字→×）
 6. **採点フリーズ修正（2026-08-11）**: 全マスを `Promise.all` で同時推論すると ort-wasm が
    デッドロックするため、`js/app.js` の採点を**直列実行**（1マスずつ）に変更
-7. **学習データ収集（2026-08-11）**: 「○」判定のマス / 自己採点で○にした字をストローク付きで
-   localStorage に保存し、JSON でダウンロードできるようにした（`js/app.js` の `collectOkSamples` /
-   `downloadCollected`）。`train_cnn.py` の `REALDATA` で取り込んで再学習できる
+7. **学習データ収集（2026-08-11）**: 「○」判定のマス / 自己採点で○にした字 / **△・×でも「正しく書けた → 保存」ボタンで指定した字**を
+   ストローク付きで localStorage に保存し、JSON でダウンロードできるようにした（`js/app.js` の `collectOkSamples` /
+   `addSample` / `downloadCollected`）。`train_cnn.py` の `REALDATA` で取り込んで再学習できる
 
 ### 注意
 
