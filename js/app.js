@@ -8,6 +8,10 @@
   var cellTotal = 0;      // 表示しているマスの総数（固定。正解文字数より多い）
   var activeCell = -1;
   var candCell = -1;      // 候補パネルを表示しているマスの index（-1 = 非表示）
+  var candAll = [];       // 全候補（確率順・重複なし）
+  var candShown = 0;      // 現在表示している候補数
+  var candPageSize = 8;   // 1回に増やす数
+  var candMax = 32;       // 候補の表示上限
   var banks = QuizStore.load();
 
   var qnumEl = document.getElementById('qnum');
@@ -136,6 +140,39 @@
     }, 250);
   }
 
+  function renderCandPanel(idx) {
+    candListEl.innerHTML = '';
+    if (!candAll.length) {
+      candListEl.innerHTML = '<span class="cand-loading">候補がありません。書き直してください。</span>';
+      return;
+    }
+    var show = Math.min(candShown, candAll.length, candMax);
+    for (var i = 0; i < show; i++) {
+      (function (ch) {
+        var b = document.createElement('button');
+        b.className = 'btn cand-btn';
+        b.textContent = ch;
+        b.addEventListener('click', function () { pickCandidate(idx, ch); });
+        candListEl.appendChild(b);
+      })(candAll[i]);
+    }
+    if (show < candAll.length && show < candMax) {
+      var more = document.createElement('button');
+      more.className = 'btn cand-more';
+      more.textContent = '▼ 候補をさらに表示';
+      more.addEventListener('click', function () {
+        candShown += candPageSize;
+        renderCandPanel(idx);
+      });
+      candListEl.appendChild(more);
+    }
+    var cl = document.createElement('button');
+    cl.className = 'btn cand-clear';
+    cl.textContent = '✕ 確定しない';
+    cl.addEventListener('click', function () { clearConfirmation(idx); });
+    candListEl.appendChild(cl);
+  }
+
   function showCands(idx) {
     var strokes = cellStrokes(idx);
     if (!validStrokes(strokes)) { hideCands(); return; }
@@ -148,27 +185,16 @@
     }
     busy = true;
     candListEl.innerHTML = '<span class="cand-loading">認識中…</span>';
-    CNN.recognize(strokes, 8).then(function (res) {
-      candListEl.innerHTML = '';
+    CNN.recognize(strokes, candMax).then(function (res) {
+      candAll = [];
       var seen = {};
-      var added = 0;
       res.top.forEach(function (t) {
-        if (!t.label || seen[t.label] || added >= 8) return;
+        if (!t.label || seen[t.label]) return;
         seen[t.label] = true;
-        added++;
-        (function (ch) {
-          var b = document.createElement('button');
-          b.className = 'btn cand-btn';
-          b.textContent = ch;
-          b.addEventListener('click', function () { pickCandidate(idx, ch); });
-          candListEl.appendChild(b);
-        })(t.label);
+        candAll.push(t.label);
       });
-      var cl = document.createElement('button');
-      cl.className = 'btn cand-clear';
-      cl.textContent = '✕ 確定しない';
-      cl.addEventListener('click', function () { clearConfirmation(idx); });
-      candListEl.appendChild(cl);
+      candShown = candPageSize;
+      renderCandPanel(idx);
     }).catch(function () {
       candListEl.innerHTML = '<span class="cand-loading">認識に失敗しました。書き直してください。</span>';
     }).then(function () { busy = false; });

@@ -13,7 +13,7 @@
       var raw = localStorage.getItem(KEY);
       if (raw) {
         var b = JSON.parse(raw);
-        if (b && typeof b === 'object' && b.history && b.kanji && b.english) {
+        if (b && typeof b === 'object' && b.history) {
           return b;
         }
       }
@@ -38,8 +38,8 @@
 
   function fromJson(text) {
     var b = JSON.parse(text);
-    if (!b || typeof b !== 'object' || !b.history || !b.kanji || !b.english) {
-      throw new Error('形式が正しくありません（歴史・漢字・英語の3つのバンクが必要です）');
+    if (!b || typeof b !== 'object' || !b.history) {
+      throw new Error('形式が正しくありません（歴史バンクが必要です）');
     }
     return b;
   }

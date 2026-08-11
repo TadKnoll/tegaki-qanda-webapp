@@ -142,22 +142,23 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
   color: #5f6368;
   padding: 4px 0;
 }
-.cand-btn {
-  min-width: 52px;
-  min-height: 52px;
-  font-size: 24px;
+.cand-list .cand-btn {
+  min-width: 104px;
+  min-height: 104px;
+  font-size: 88px;
+  line-height: 1;
   font-weight: bold;
   border: 1px solid #c5cdd7;
   border-radius: 10px;
   background: #fff;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
 }
-.cand-btn:active {
+.cand-list .cand-btn:active {
   background: #e8f0fe;
   border-color: #1a73e8;
 }
-.cand-clear {
+.cand-list .cand-clear {
   min-height: 44px;
   font-size: 14px;
   color: #d93025;
@@ -166,6 +167,21 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
   background: #fff;
   cursor: pointer;
   padding: 4px 12px;
+}
+.cand-list .cand-more {
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #1a73e8;
+  border: 1px dashed #1a73e8;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px 12px;
+  flex-basis: 100%;
+}
+.cand-list .cand-more:active {
+  background: #e8f0fe;
 }
 
 .hint { font-size: 13px; color: #5f6368; text-align: center; margin: 12px 0 10px; }
