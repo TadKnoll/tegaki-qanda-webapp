@@ -174,18 +174,99 @@
     }
     gradeBtn.disabled = true;
     resultEl.innerHTML = '<div class="feedback">認識中…</div>';
-    var tasks = [];
+    // ort-wasm の同一セッションへの同時 run() はデッドロックするため直列で実行する
+    var results = [];
+    var chain = Promise.resolve();
     for (var i = 0; i < cellTotal; i++) {
-      var expected = i < q.a.length ? q.a[i] : '';
-      var strokes = KanjiCanvas['recordedPattern_' + cellId(i)] || [];
-      tasks.push(gradeCellCNN({ expected: expected, strokes: strokes }));
+      (function (idx) {
+        chain = chain.then(function () {
+          var expected = idx < q.a.length ? q.a[idx] : '';
+          var strokes = KanjiCanvas['recordedPattern_' + cellId(idx)] || [];
+          return gradeCellCNN({ expected: expected, strokes: strokes });
+        }).then(function (r) { results.push(r); });
+      })(i);
     }
-    Promise.all(tasks).then(function (results) {
+    chain.then(function () {
       showResults(results, wholeAnswer);
     }).catch(function (err) {
       resultEl.innerHTML = '<div class="feedback">認識に失敗しました: ' + (err && err.message ? err.message : err) + '</div>';
       gradeBtn.disabled = false;
     });
+  }
+
+  // ---- 学習データ収集（実手書きを溜めて再学習するための保存/ダウンロード） ----
+  var COLLECT_KEY = 'kanji_train_data_v1';
+
+  function loadCollected() {
+    try { return JSON.parse(localStorage.getItem(COLLECT_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+
+  function saveCollected(list) {
+    try { localStorage.setItem(COLLECT_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  function cellStrokes(i) {
+    return KanjiCanvas['recordedPattern_' + cellId(i)] || [];
+  }
+
+  function validStrokes(s) {
+    if (!s || !s.length) return false;
+    var n = 0;
+    for (var i = 0; i < s.length; i++) n += (s[i] || []).length;
+    return n >= 2;
+  }
+
+  // 重複を避けつつ1サンプル追加。追加できたら true
+  function addSample(ch, strokes) {
+    if (!ch || ch.length !== 1 || !validStrokes(strokes)) return false;
+    var list = loadCollected();
+    var key = JSON.stringify(strokes);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].char === ch && JSON.stringify(list[i].strokes) === key) return false;
+    }
+    list.push({ char: ch, strokes: strokes, t: Date.now() });
+    saveCollected(list);
+    return true;
+  }
+
+  // ◯判定のマスをまとめて保存（正しい手書き＝正解ラベルとして学習に使える）
+  function collectOkSamples() {
+    var q = current();
+    var added = 0;
+    for (var i = 0; i < lastResults.length; i++) {
+      if (!lastResults[i] || lastResults[i].grade !== 'ok') continue;
+      var ch = i < q.a.length ? q.a[i] : '';
+      if (addSample(ch, cellStrokes(i))) added++;
+    }
+    return added;
+  }
+
+  function downloadCollected() {
+    var list = loadCollected();
+    var blob = new Blob([JSON.stringify(list, null, 0)], { type: 'application/json' });
+    var a = document.createElement('a');
+    var d = new Date();
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kanji_training_data_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+      '_' + p(d.getHours()) + p(d.getMinutes()) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+  }
+
+  function refreshCollectBar() {
+    var bar = document.getElementById('collect-bar');
+    if (!bar) return;
+    var n = loadCollected().length;
+    if (n > 0) {
+      bar.hidden = false;
+      document.getElementById('collect-count').textContent = '学習用の手書きデータ 保存済み ' + n + ' 件';
+    } else {
+      bar.hidden = true;
+    }
   }
 
   function englishWhitelist() {
@@ -249,6 +330,32 @@
     for (var i = 0; i < results.length; i++) if (results[i].grade === 'good') ambIdx.push(i);
     if (ambIdx.length) renderSelfCheck(ambIdx);
     gradeBtn.disabled = true;
+
+    // 実手書きの再学習用: ◯判定のマスがあれば保存ボタンを出す（英語は対象外）
+    if (!isEnglish()) {
+      var okN = 0;
+      for (var ci = 0; ci < results.length; ci++) {
+        if (results[ci] && results[ci].grade === 'ok' && ci < current().a.length && validStrokes(cellStrokes(ci))) okN++;
+      }
+      if (okN) {
+        var cw = document.createElement('div');
+        cw.className = 'collect-actions';
+        var cb = document.createElement('button');
+        cb.className = 'btn';
+        cb.textContent = '◯の手書き ' + okN + ' 字を学習用に保存';
+        var cmsg = document.createElement('span');
+        cmsg.className = 'collect-msg';
+        cb.addEventListener('click', function () {
+          var added = collectOkSamples();
+          cmsg.textContent = added + ' 字を保存しました。画面下の「ダウンロード」で取り出せます。';
+          cb.disabled = true;
+          refreshCollectBar();
+        });
+        cw.appendChild(cb);
+        cw.appendChild(cmsg);
+        resultEl.appendChild(cw);
+      }
+    }
   }
 
   function renderMarks(results) {
@@ -316,6 +423,10 @@
 
   function resolveSelfCheck(i, pass) {
     lastResults[i].grade = pass ? 'ok' : 'ng';
+    if (pass) {
+      var ch = current().a[i];
+      if (ch && ch.length === 1 && addSample(ch, cellStrokes(i))) refreshCollectBar();
+    }
     var box = document.getElementById('cellbox_' + i);
     if (box) {
       var oldMark = box.querySelector('.mark');
@@ -361,6 +472,9 @@
 
   setupTabs();
   loadQuestion();
+  refreshCollectBar();
+  var dlBtn = document.getElementById('collect-dl');
+  if (dlBtn) dlBtn.addEventListener('click', downloadCollected);
 
   // CNN モデルを事前読み込み（初回採点を速くする）
   if (cnnAvailable()) {

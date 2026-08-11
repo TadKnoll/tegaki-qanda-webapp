@@ -18,6 +18,12 @@ os.makedirs(OUTDIR, exist_ok=True)
 CKPT = os.path.join(OUTDIR, 'ckpt.pt')
 RESUME = os.environ.get('RESUME', '0') == '1'
 
+# 実手書きの学習データ（アプリの「学習用に保存→ダウンロード」で得た JSON）。
+# 複数指定可（セミコロン区切り）。ディレクトリ指定なら中の *.json を全部読む。
+REALDATA = os.environ.get('REALDATA', '')
+REAL_REPEAT = int(os.environ.get('REAL_REPEAT', 5))   # 実データの訓練での重み（反復数）
+REAL_VAL_PER_CHAR = int(os.environ.get('REAL_VAL_PER_CHAR', 2))
+
 SIZE = 64
 SAMPLES_PER_CLASS = int(os.environ.get('SPC', 40))          # per class per epoch
 VAL_PER_CLASS = int(os.environ.get('VPC', 5))
@@ -97,6 +103,56 @@ def build_clean(norm_by_char, labels):
     return np.asarray(X, np.uint8), np.arange(len(labels), dtype=np.int64)
 
 
+def load_real_data(paths, labels):
+    """実手書きJSON を取り込み、訓練用(by_charへ足す分)と評価用に分ける。"""
+    import random
+    rng = random.Random(123)
+    per_char = {}
+    train_by_char = {}
+    val_samples = []
+    unknown = 0
+    files = []
+    for p in paths:
+        p = p.strip()
+        if not p:
+            continue
+        if os.path.isdir(p):
+            files += [os.path.join(p, f) for f in sorted(os.listdir(p)) if f.endswith('.json')]
+        else:
+            files.append(p)
+    for fp in files:
+        if not os.path.exists(fp):
+            print(f'  !! REALDATA not found: {fp}', flush=True)
+            continue
+        recs = json.load(open(fp, encoding='utf-8-sig'))
+        for rec in recs:
+            ch = rec.get('char')
+            st = rec.get('strokes')
+            if not ch or not st or ch not in labels:
+                unknown += 1
+                continue
+            per_char.setdefault(ch, []).append(st)
+        print(f'  loaded {len(recs)} records from {fp}', flush=True)
+    for ch, samples in per_char.items():
+        rng.shuffle(samples)
+        keep = max(1, len(samples) - REAL_VAL_PER_CHAR)
+        for s in samples[:keep]:
+            train_by_char.setdefault(ch, []).extend([s] * REAL_REPEAT)
+        for s in samples[keep:]:
+            val_samples.append((ch, s))
+    return train_by_char, val_samples, unknown
+
+
+def build_real_val(norm_by_char, labels, val_samples):
+    if not val_samples:
+        return None, None
+    X, y = [], []
+    for ch, st in val_samples:
+        X.append(rasterize(normalize_coords(st), 3))
+        y.append(labels.index(ch))
+    return np.asarray(X, np.uint8), np.asarray(y, np.int64)
+
+
 def evaluate(model, X, y, batch=512):
     model.eval()
     top1 = top5 = 0
@@ -149,6 +205,17 @@ def main():
     print(f'classes={n_classes} samples/class={SAMPLES_PER_CLASS} '
           f'epoch={EPOCHS} batch={BATCH}')
 
+    # 実手書きデータがあれば合成データに混ぜて再学習する
+    real_val_x = real_val_y = None
+    if REALDATA:
+        real_train, real_val, unknown = load_real_data(REALDATA.split(';'), labels)
+        for ch, samples in real_train.items():
+            by_char.setdefault(ch, []).extend(samples)
+        norm_by_char = {ch: [normalize_coords(s) for s in by_char[ch]] for ch in labels}
+        real_val_x, real_val_y = build_real_val(norm_by_char, labels, real_val)
+        print(f'real: train chars={len(real_train)} val={len(real_val)} '
+              f'unknown(not in model)={unknown}', flush=True)
+
     ds = CharDataset(norm_by_char, labels, SAMPLES_PER_CLASS, SEED)
     loader = torch.utils.data.DataLoader(
         ds, batch_size=BATCH, shuffle=True, num_workers=WORKERS,
@@ -195,10 +262,14 @@ def main():
         sched.step()
         va1, va5 = evaluate(model, X_val, y_val)
         cl1, cl5 = evaluate(model, X_clean, y_clean)
-        print(f'ep{ep} train_loss={tot / iters_per_epoch:.3f} '
-              f'val_top1={va1 * 100:.1f}% top5={va5 * 100:.1f}% '
-              f'clean_top1={cl1 * 100:.1f}% top5={cl5 * 100:.1f}% '
-              f'({time.time() - t0:.0f}s)', flush=True)
+        line = (f'ep{ep} train_loss={tot / iters_per_epoch:.3f} '
+                f'val_top1={va1 * 100:.1f}% top5={va5 * 100:.1f}% '
+                f'clean_top1={cl1 * 100:.1f}% top5={cl5 * 100:.1f}% '
+                f'({time.time() - t0:.0f}s)')
+        if real_val_x is not None:
+            r1, r5 = evaluate(model, real_val_x, real_val_y)
+            line += f' REAL_top1={r1 * 100:.1f}% top5={r5 * 100:.1f}%'
+        print(line, flush=True)
         # checkpoint each epoch so an interrupted run still yields a model
         torch.save({'epoch': ep, 'state': model.state_dict(),
                     'opt': opt.state_dict(), 'sched': sched.state_dict(),

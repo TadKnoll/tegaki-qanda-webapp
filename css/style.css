@@ -154,6 +154,35 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
 .nav { display: flex; justify-content: space-between; gap: 8px; }
 .nav .btn { flex: 1; }
 
+.collect {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #e0e4ea;
+  border-radius: 10px;
+}
+.collect-hint {
+  font-size: 12px;
+  color: #80868b;
+  text-align: center;
+  margin: 8px 0 0;
+}
+.collect-actions {
+  margin-top: 10px;
+  text-align: center;
+}
+.collect-msg {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #188038;
+}
+
 .selfcheck {
   margin-top: 12px;
   border-top: 1px dashed #d0d6de;

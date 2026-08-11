@@ -46,6 +46,21 @@ EPOCHS=14 RESUME=1 PYTHONIOENCODING=utf-8 python train_cnn.py
 - `VPC=5` 固定検証サンプル数/クラス
 - `BATCH=256` / `LR=1.5e-3` / `WORKERS=6`
 - `REFPATH=` 参照パターンの場所（既定はリポジトリ内 `vendor/ref-patterns.js`）
+- `REALDATA=` 実手書きデータ（アプリの「学習用に保存→ダウンロード」で得た JSON）。
+  セミコロン区切りで複数指定可。ディレクトリ指定なら中の `*.json` をすべて読む
+- `REAL_REPEAT=5` 実データの訓練での重み（反復回数）
+- `REAL_VAL_PER_CHAR=2` 文字ごとに評価用へ抜く件数（残りが訓練用。各文字最低1件は訓練用）
+
+### 実手書きデータでの再学習
+
+```
+$env:REALDATA='C:\path\to\kanji_training_data_XXXX.json'; $env:RESUME='1'; $env:EPOCHS='8'; python train_cnn.py
+```
+
+- 実データはラベル既知（正解文字）のストロークだけを使う。モデルに無い文字や不正な記録は自動でスキップ
+- 評価用（`REAL_VAL_PER_CHAR` で分離したサンプル）に対する正解率 `REAL_top1` をエポックごとに表示
+- 再学習で `out/kanji_cnn.onnx` が更新されたら `vendor/onnx/kanji_cnn.onnx` へコピーし直す
+  （`vendor/onnx/labels.js` は文字集合が変わらなければそのままで良い）
 
 学習は CPU で約 12 分/エポック（`SPC=40, WORKERS=6`）。10 エポックで十分収束
 （val_top1≈99.9%）。各エポック終了時に `out/ckpt.pt` を保存し、val が更新した時は
@@ -72,6 +87,11 @@ EPOCHS=14 RESUME=1 PYTHONIOENCODING=utf-8 python train_cnn.py
    - モデルに無い文字は自動判定せず △（自己判定）に回す
 5. 精度検証: 参照パターン 30 文字の推論で全件 top1 一致（確率 0.92〜1.00）。
    アプリの採点フローを Chrome ヘッドレスで E2E 検証（正解→○、誤字→×）
+6. **採点フリーズ修正（2026-08-11）**: 全マスを `Promise.all` で同時推論すると ort-wasm が
+   デッドロックするため、`js/app.js` の採点を**直列実行**（1マスずつ）に変更
+7. **学習データ収集（2026-08-11）**: 「○」判定のマス / 自己採点で○にした字をストローク付きで
+   localStorage に保存し、JSON でダウンロードできるようにした（`js/app.js` の `collectOkSamples` /
+   `downloadCollected`）。`train_cnn.py` の `REALDATA` で取り込んで再学習できる
 
 ### 注意
 
@@ -79,4 +99,5 @@ EPOCHS=14 RESUME=1 PYTHONIOENCODING=utf-8 python train_cnn.py
   `python -m http.server` 等の HTTP サーバー、または GitHub Pages 経由で開くこと。
 - 前処理は学習時と推論時で完全一致させること（`data_pipeline.py` の `normalize_coords` / `rasterize` / `STEP=0.5`）
 - モデルは合成データ（フォント由来ベクトル）学習のため、実手書きとの乖離は
-  現地での自己採点（△）でカバー。実データを集められれば追加学習で改善可能
+  現地での自己採点（△）でカバー。アプリの「学習用に保存」で実データを集め、
+  `REALDATA` で再学習すると実手書きに合わせて改善できる（上記「実手書きデータでの再学習」参照）
