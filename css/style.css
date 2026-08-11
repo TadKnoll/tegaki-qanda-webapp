@@ -101,6 +101,73 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
   pointer-events: none;
 }
 
+.cell .cell-confirm {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: bold;
+  color: #1a73e8;
+  background: rgba(255,255,255,.88);
+  border-radius: 6px;
+  padding: 0 4px;
+  pointer-events: none;
+}
+
+.cand-panel {
+  margin: 12px auto 0;
+  max-width: 560px;
+  padding: 12px;
+  background: #fff;
+  border: 2px solid #1a73e8;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(26,115,232,.2);
+}
+.cand-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #1a73e8;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.cand-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.cand-loading {
+  font-size: 14px;
+  color: #5f6368;
+  padding: 4px 0;
+}
+.cand-btn {
+  min-width: 52px;
+  min-height: 52px;
+  font-size: 24px;
+  font-weight: bold;
+  border: 1px solid #c5cdd7;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px;
+}
+.cand-btn:active {
+  background: #e8f0fe;
+  border-color: #1a73e8;
+}
+.cand-clear {
+  min-height: 44px;
+  font-size: 14px;
+  color: #d93025;
+  border: 1px solid #d93025;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+
 .hint { font-size: 13px; color: #5f6368; text-align: center; margin: 12px 0 10px; }
 
 .data-note {

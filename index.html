@@ -18,7 +18,12 @@
 
     <div class="cells" id="cells"></div>
 
-    <p class="hint" id="hint">マスは左から順に1字ずつ書きましょう。余ったマスは空のままでOK。</p>
+    <div id="cand-panel" class="cand-panel" hidden>
+      <div class="cand-title" id="cand-title"></div>
+      <div class="cand-list" id="cand-list"></div>
+    </div>
+
+    <p class="hint" id="hint">マスに1字ずつ書くと、候補の文字が出ます。書いた字を選んで確定しましょう。</p>
 
     <p class="data-note" id="data-note" hidden></p>
 
@@ -39,7 +44,7 @@
       <span id="collect-count"></span>
       <button id="collect-dl" class="btn">ダウンロード</button>
     </div>
-    <p class="collect-hint">採点後、正しく書けたと思うマスを「学習用に保存」できます（◯の字はまとめて保存、△・×でも「正しく書けた → 保存」ボタン、自己採点で「○ あってる」を選んだ字も自動保存）。ためたデータをダウンロードして、手書き認識の再学習に使えます。</p>
+    <p class="collect-hint">確定したマスは、その字の手書きが自動的に学習用データとして保存されます。ためたデータをダウンロードして、手書き認識の再学習に使えます。</p>
   </main>
 
   <script src="vendor/kanji-canvas.min.js"></script>
