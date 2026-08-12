@@ -205,6 +205,20 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
   background: #e8f0fe;
   border-color: #1a73e8;
 }
+.cand-list .cand-numrow .cand-num {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 22px;
+}
+.cand-list .cand-alpharow {
+  gap: 4px;
+}
+.cand-list .cand-alpharow .cand-alpha {
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 16px;
+  padding: 2px;
+}
 
 .hint { font-size: 13px; color: #5f6368; text-align: center; margin: 12px 0 10px; }
 
