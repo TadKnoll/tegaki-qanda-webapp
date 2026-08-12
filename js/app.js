@@ -199,28 +199,6 @@
       symRow.appendChild(b);
     });
     candListEl.appendChild(symRow);
-    // 数字ボタン
-    var numRow = document.createElement('div');
-    numRow.className = 'cand-symbols cand-numrow';
-    '0123456789'.split('').forEach(function (ch) {
-      var b = document.createElement('button');
-      b.className = 'btn cand-sym cand-num';
-      b.textContent = ch;
-      b.addEventListener('click', function () { pickCandidate(idx, ch, true); });
-      numRow.appendChild(b);
-    });
-    candListEl.appendChild(numRow);
-    // アルファベットボタン（大文字）
-    var alphaRow = document.createElement('div');
-    alphaRow.className = 'cand-symbols cand-alpharow';
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function (ch) {
-      var b = document.createElement('button');
-      b.className = 'btn cand-sym cand-alpha';
-      b.textContent = ch;
-      b.addEventListener('click', function () { pickCandidate(idx, ch, true); });
-      alphaRow.appendChild(b);
-    });
-    candListEl.appendChild(alphaRow);
     if (show < candAll.length && show < candMax) {
       var more = document.createElement('button');
       more.className = 'btn cand-more';
