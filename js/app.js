@@ -56,6 +56,7 @@
 
   var confirmed = [];      // 各マスで確定した文字（未確定は ''）
   var candTimers = [];     // マスごとの候補表示デバウンス
+  var candHash = '';       // 直近に候補表示したマスのストロークハッシュ
   var busy = false;        // 候補計算中
 
   function current() {
@@ -163,6 +164,9 @@
   // ---- 候補表示（書いた字からトップ候補を出し、解答者が選んで確定） ----
   function scheduleCands(idx) {
     clearTimeout(candTimers[idx]);
+    // 書き込み（2点以上）がないタップやマウス操作では候補を出さない。
+    // （タップで1点だけのストロークが記録され、表示中の候補を消す原因になる）
+    if (!validStrokes(cellStrokes(idx))) return;
     candTimers[idx] = setTimeout(function () {
       if (busy) { scheduleCands(idx); return; }
       showCands(idx);
@@ -214,7 +218,16 @@
 
   function showCands(idx) {
     var strokes = cellStrokes(idx);
-    if (!validStrokes(strokes)) { hideCands(); return; }
+    if (!validStrokes(strokes)) {
+      // タップだけで2点未満の場合は何もしない（表示中の候補を消さない）
+      return;
+    }
+    var h = JSON.stringify(strokes);
+    if (candCell === idx && !candPanel.hidden && h === candHash) {
+      // 同じマス・同じストロークなら再表示しない（iPadの合成マウスイベント対策）
+      return;
+    }
+    candHash = h;
     candCell = idx;
     candPanel.hidden = false;
     candTitle.textContent = 'マス' + (idx + 1) + ' の候補（書いた字を選んで確定）';
@@ -241,6 +254,7 @@
 
   function hideCands() {
     candCell = -1;
+    candHash = '';
     candPanel.hidden = true;
   }
 
