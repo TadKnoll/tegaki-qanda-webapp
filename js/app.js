@@ -219,7 +219,20 @@
       (function (ch) {
         var b = document.createElement('button');
         b.className = 'btn cand-btn';
-        b.textContent = ch;
+        // 読みがあれば表示
+        var reading = (typeof CHAR_READINGS !== 'undefined' && CHAR_READINGS[ch]) ? CHAR_READINGS[ch] : '';
+        if (reading) {
+          var charSpan = document.createElement('span');
+          charSpan.className = 'cand-char';
+          charSpan.textContent = ch;
+          var readSpan = document.createElement('span');
+          readSpan.className = 'cand-reading';
+          readSpan.textContent = reading;
+          b.appendChild(charSpan);
+          b.appendChild(readSpan);
+        } else {
+          b.textContent = ch;
+        }
         b.addEventListener('click', function () { pickCandidate(idx, ch); });
         candListEl.appendChild(b);
       })(candAll[i]);
