@@ -14,6 +14,35 @@
   var candMax = 32;       // 候補の表示上限
   var banks = QuizStore.load();
 
+  // ---- 採点時の正規化（小書き仮名の読み替えと記号の無視） ----
+  var SYMBOLS = '\u30FB\uFF1D\u30FC\u2010\u002D\u2015\u301C\uFF5E'; // ・ ＝ ー ‐ - ― 〜 ～
+  var SMALL_TO_LARGE = {
+    '\u3041': '\u3042', '\u3043': '\u3044', '\u3045': '\u3046',
+    '\u3047': '\u3048', '\u3049': '\u304A', '\u3063': '\u3064',
+    '\u3083': '\u3084', '\u3085': '\u3086', '\u3087': '\u3088',
+    '\u308E': '\u308F', '\u30A1': '\u30A2', '\u30A3': '\u30A4',
+    '\u30A5': '\u30A6', '\u30A7': '\u30A8', '\u30A9': '\u30AA',
+    '\u30C3': '\u30C4', '\u30E3': '\u30E4', '\u30E5': '\u30E6',
+    '\u30E7': '\u30E8', '\u30EE': '\u30EF', '\u30F5': '\u30AB',
+    '\u30F6': '\u30B1'
+  };
+  function isSymbol(c) {
+    return SYMBOLS.indexOf(c) >= 0;
+  }
+  function normalizeChar(c) {
+    return SMALL_TO_LARGE[c] || c;
+  }
+  // 記号を省き、小書き仮名を大書きに揃えて比較可能な文字列にする
+  function normalizeText(s) {
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s[i];
+      if (isSymbol(c)) continue;
+      out += normalizeChar(c);
+    }
+    return out;
+  }
+
   var qnumEl = document.getElementById('qnum');
   var qEl = document.getElementById('question-text');
   var cellsEl = document.getElementById('cells');
@@ -156,6 +185,16 @@
         candListEl.appendChild(b);
       })(candAll[i]);
     }
+    var symRow = document.createElement('div');
+    symRow.className = 'cand-symbols';
+    ['\u30FB', '\uFF1D', '\u30FC'].forEach(function (ch) { // ・ ＝ ー
+      var b = document.createElement('button');
+      b.className = 'btn cand-sym';
+      b.textContent = ch;
+      b.addEventListener('click', function () { pickCandidate(idx, ch, true); });
+      symRow.appendChild(b);
+    });
+    candListEl.appendChild(symRow);
     if (show < candAll.length && show < candMax) {
       var more = document.createElement('button');
       more.className = 'btn cand-more';
@@ -205,12 +244,12 @@
     candPanel.hidden = true;
   }
 
-  function pickCandidate(idx, ch) {
+  function pickCandidate(idx, ch, noSample) {
     confirmed[idx] = ch;
     renderConfirm(idx);
     hideCands();
     resetGradedState();
-    if (addSample(ch, cellStrokes(idx))) refreshCollectBar();
+    if (!noSample && addSample(ch, cellStrokes(idx))) refreshCollectBar();
     // 次の未確定マスへ自動移動
     for (var i = idx + 1; i < cellTotal; i++) {
       if (!confirmed[i]) { setActive(i); return; }
@@ -247,8 +286,10 @@
     for (var i = 0; i < cellTotal; i++) {
       var expected = i < q.a.length ? q.a[i] : '';
       if (!expected) { results.push({ grade: 'blank', shown: '' }); continue; }
+      if (isSymbol(expected)) { results.push({ grade: 'blank', shown: '' }); continue; }
       if (!confirmed[i]) { results.push({ grade: 'ng', shown: '未記入' }); continue; }
-      results.push({ grade: confirmed[i] === expected ? 'ok' : 'ng', shown: confirmed[i] });
+      var ok = normalizeText(confirmed[i]) === normalizeText(expected);
+      results.push({ grade: ok ? 'ok' : 'ng', shown: confirmed[i] });
     }
     showResults(results);
   }

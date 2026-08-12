@@ -183,6 +183,28 @@ main { max-width: 760px; margin: 0 auto; padding: 14px; }
 .cand-list .cand-more:active {
   background: #e8f0fe;
 }
+.cand-list .cand-symbols {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-basis: 100%;
+}
+.cand-list .cand-symbols .cand-sym {
+  min-width: 64px;
+  min-height: 64px;
+  font-size: 40px;
+  line-height: 1;
+  font-weight: bold;
+  border: 1px solid #c5cdd7;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  padding: 4px;
+}
+.cand-list .cand-symbols .cand-sym:active {
+  background: #e8f0fe;
+  border-color: #1a73e8;
+}
 
 .hint { font-size: 13px; color: #5f6368; text-align: center; margin: 12px 0 10px; }
 
