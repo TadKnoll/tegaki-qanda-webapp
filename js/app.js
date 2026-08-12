@@ -14,6 +14,22 @@
   var candMax = 32;       // 候補の表示上限
   var banks = QuizStore.load();
 
+  // ---- ランダム出題（登録問題から最大10問をシャッフル） ----
+  var QUIZ_COUNT = 10;
+  var allIndices = [];
+  var quizIndices = [];
+  (function initQuiz() {
+    var qs = banks[bankId].questions;
+    for (var i = 0; i < qs.length; i++) allIndices.push(i);
+    // シャッフル（Fisher-Yates）
+    for (var i = allIndices.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = allIndices[i]; allIndices[i] = allIndices[j]; allIndices[j] = tmp;
+    }
+    var n = Math.min(QUIZ_COUNT, allIndices.length);
+    quizIndices = allIndices.slice(0, n);
+  })();
+
   // ---- 採点時の正規化（小書き仮名の読み替えと記号の無視） ----
   var SYMBOLS = '\u30FB\uFF1D\u30FC\u2010\u002D\u2015\u301C\uFF5E'; // ・ ＝ ー ‐ - ― 〜 ～
   var SMALL_TO_LARGE = {
@@ -60,10 +76,10 @@
   var busy = false;        // 候補計算中
 
   function current() {
-    return banks[bankId].questions[qIndex];
+    return banks[bankId].questions[quizIndices[qIndex]];
   }
   function listLength() {
-    return banks[bankId].questions.length;
+    return quizIndices.length;
   }
   function cellId(i) {
     return 'c' + i;
