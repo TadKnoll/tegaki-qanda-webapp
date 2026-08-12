@@ -20,6 +20,32 @@ h1 {
   font-size: 20px;
 }
 
+.cat-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.cat-select label {
+  font-size: 14px;
+  font-weight: bold;
+}
+.cat-select select {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.4);
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  font-size: 14px;
+}
+.cat-select select option {
+  background: #1a73e8;
+  color: #fff;
+}
+
 .tabs { display: flex; gap: 8px; }
 .tab {
   flex: 1;

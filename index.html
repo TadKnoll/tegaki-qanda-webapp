@@ -9,6 +9,13 @@
 <body>
   <header>
     <h1>✍️ 手書き 一問一答チェック</h1>
+    <div class="cat-select" id="cat-select">
+      <label>出題範囲:</label>
+      <select id="cat-dropdown">
+        <option value="history">デフォルト（歴史8問）</option>
+      </select>
+      <button id="cat-start" class="btn primary">開始</button>
+    </div>
     <nav id="tabs" class="tabs"></nav>
   </header>
 
@@ -53,6 +60,7 @@
   <script src="vendor/onnx/labels.js"></script>
   <script src="js/cnn.js"></script>
   <script src="js/questions.js"></script>
+  <script src="js/imported_questions.js"></script>
   <script src="js/questions-store.js"></script>
   <script src="js/answer_chars.js"></script>
   <script src="js/app.js"></script>

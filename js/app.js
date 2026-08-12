@@ -14,6 +14,25 @@
   var candMax = 32;       // 候補の表示上限
   var banks = QuizStore.load();
 
+  // インポートされた問題を banks にマージ
+  if (typeof IMPORTED_BANKS !== 'undefined') {
+    Object.keys(IMPORTED_BANKS).forEach(function (k) {
+      banks[k] = IMPORTED_BANKS[k];
+    });
+  }
+
+  // カテゴリドロップダウンを生成
+  var catDropdown = document.getElementById('cat-dropdown');
+  if (catDropdown) {
+    Object.keys(banks).forEach(function (k) {
+      var opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = banks[k].label + '（' + banks[k].questions.length + '問）';
+      catDropdown.appendChild(opt);
+    });
+    catDropdown.value = bankId;
+  }
+
   // ---- ランダム出題（登録問題から最大10問をシャッフル） ----
   var QUIZ_COUNT = 10;
   var allIndices = [];
@@ -316,19 +335,29 @@
     }
   }
 
-  // ---- 採点（選択した文字と正解の照合） ----
+  // ---- 採点（選択した文字と正解の照合。全解答を正解とする） ----
   function grade() {
     var q = current();
     gradeBtn.disabled = true;
     resultEl.innerHTML = '';
     hideCands();
     var results = [];
+    // allAnswers が配列なら全てを正解候補とする
+    var acceptList = (q.allAnswers && q.allAnswers.length) ? q.allAnswers : [q.a];
     for (var i = 0; i < cellTotal; i++) {
       var expected = i < q.a.length ? q.a[i] : '';
       if (!expected) { results.push({ grade: 'blank', shown: '' }); continue; }
       if (isSymbol(expected)) { results.push({ grade: 'blank', shown: '' }); continue; }
       if (!confirmed[i]) { results.push({ grade: 'ng', shown: '未記入' }); continue; }
-      var ok = normalizeText(confirmed[i]) === normalizeText(expected);
+      // 全解答のうちいずれかと一致すれば正解
+      var ok = false;
+      for (var j = 0; j < acceptList.length; j++) {
+        var acc = acceptList[j];
+        if (i < acc.length && normalizeText(confirmed[i]) === normalizeText(acc[i])) {
+          ok = true;
+          break;
+        }
+      }
       results.push({ grade: ok ? 'ok' : 'ng', shown: confirmed[i] });
     }
     showResults(results);
@@ -342,7 +371,8 @@
     sEl.textContent = ok ? '◯ 正解！' : '× 不正解';
     var f = document.createElement('div');
     f.className = 'feedback';
-    f.textContent = '正解は「' + current().a + '」';
+    var acceptList = (current().allAnswers && current().allAnswers.length) ? current().allAnswers : [current().a];
+    f.textContent = '正解は「' + acceptList.join(' / ') + '」';
     var l = document.createElement('div');
     l.className = 'legend';
     l.textContent = '○=選択した字が正解　×=不正解・未確定';
@@ -428,6 +458,27 @@
     qIndex = (qIndex + 1) % listLength();
     loadQuestion();
   });
+
+  // カテゴリ選択ボタン
+  var catStartBtn = document.getElementById('cat-start');
+  if (catStartBtn && catDropdown) {
+    catStartBtn.addEventListener('click', function () {
+      bankId = catDropdown.value;
+      qIndex = 0;
+      // ランダム出題を再初期化
+      allIndices = [];
+      quizIndices = [];
+      var qs = banks[bankId].questions;
+      for (var i = 0; i < qs.length; i++) allIndices.push(i);
+      for (var i = allIndices.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = allIndices[i]; allIndices[i] = allIndices[j]; allIndices[j] = tmp;
+      }
+      var n = Math.min(QUIZ_COUNT, allIndices.length);
+      quizIndices = allIndices.slice(0, n);
+      loadQuestion();
+    });
+  }
 
   loadQuestion();
   refreshCollectBar();
